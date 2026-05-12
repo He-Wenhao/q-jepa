@@ -53,7 +53,7 @@ model.eval()
 U_t     = torch.tensor(U_all, dtype=torch.float32)
 gamma_t = torch.tensor(gamma_all, dtype=torch.float32)
 with torch.no_grad():
-    z_gs = model.encoder(gamma_t, U_t).numpy()
+    z_gs = model.encoder(gamma_t).numpy()
 
 # Denoiser z* from random γ₀ (5 Fock states, averaged)
 basis     = build_basis(L, 3, 3)
