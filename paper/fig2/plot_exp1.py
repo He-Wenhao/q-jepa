@@ -22,12 +22,11 @@ matplotlib.rcParams.update({
     "savefig.dpi":     300,
 })
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RES  = os.path.join(ROOT, "results")
 OUT  = os.path.dirname(os.path.abspath(__file__))
 
 N_TRAIN_LIST = [5, 10, 20, 50, 100, 200]
-
 COL = {"endpoint":   "#888888",
        "trajectory": "#2166AC"}
 MRK = {"endpoint": "^", "trajectory": "o"}
@@ -54,7 +53,6 @@ def main():
         ep = np.mean(r["endpoint"][n])
         tr = np.mean(r["trajectory"][n])
         ratio = ep / tr
-        idx   = N_TRAIN_LIST.index(n)
         ax.annotate(f"×{ratio:.1f}",
                     xy=(n, tr),
                     xytext=(n * 1.15, tr * 1.4),
@@ -67,7 +65,7 @@ def main():
     ax.set_xticklabels([str(n) for n in x])
     ax.set_xlabel(r"Number of simulations $N$")
     ax.set_ylabel(r"MAE of predicted $\hat{\gamma}_\mathrm{GS}$")
-    ax.set_title("Trajectory SSL vs endpoint-only\n(same simulation budget)")
+    ax.set_title("Trajectory SSL vs endpoint-only\n(equal simulation budget, 1 traj./H)")
     ax.grid(True, which="both", alpha=0.3, linewidth=0.5)
     ax.legend(framealpha=0.9, loc="upper right")
     ax.set_ylim(bottom=0)

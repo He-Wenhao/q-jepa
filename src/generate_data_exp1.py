@@ -34,7 +34,7 @@ RDM_DIM      = 2 * L
 
 M_TOTAL      = 300        # total Hamiltonians (200 pool + 100 test)
 N_TEST       = 100
-N_TRAJ       = 3          # trajectories per Hamiltonian
+N_TRAJ       = 1          # trajectories per Hamiltonian
 TAU_STEPS    = 30
 DELTA_TAU    = 0.1
 
