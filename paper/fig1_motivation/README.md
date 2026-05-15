@@ -24,8 +24,8 @@ of mean-field methods.
 
 ```bash
 # 1. Generate ground-state and HF data (from repo root)
-python generate_data.py      # → data/hubbard_gs.npz
-python hf_baseline.py        # → data/hubbard_hf.npz
+python src/generate_data.py      # → data/hubbard_gs.npz
+python src/hf_baseline.py        # → data/hubbard_hf.npz
 
 # 2. Generate this figure
 python paper/fig1_motivation/plot.py  # → paper/fig1_motivation/fig1.{png,pdf}

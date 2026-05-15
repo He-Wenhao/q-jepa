@@ -19,7 +19,7 @@ from numpy.linalg import lstsq
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT  = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from model import QJEPA
 from hubbard_ed import (build_basis, make_basis_index, build_all_cdagger_c,

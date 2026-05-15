@@ -45,14 +45,14 @@ Head:      z* → E₀        (universal energy functional, NO Hamiltonian param
 
 ```bash
 # 1. Generate data (from repo root)
-python generate_data.py          # → data/hubbard_ssl.npz, hubbard_gs.npz
-python hf_baseline.py            # → data/hubbard_hf.npz
+python src/generate_data.py          # → data/hubbard_ssl.npz, hubbard_gs.npz
+python src/hf_baseline.py            # → data/hubbard_hf.npz
 
 # 2. Pretrain Q-JEPA
-python train_ssl.py              # → checkpoints/jepa_pretrained.pt
+python src/train_ssl.py              # → checkpoints/jepa_pretrained.pt
 
 # 3. Run few-shot evaluation
-python eval_iterate.py           # → results/iterate_results.npy
+python src/eval_iterate.py           # → results/iterate_results.npy
 
 # 4. Generate this figure
 python paper/fig2_main_result/plot.py

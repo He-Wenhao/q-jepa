@@ -29,7 +29,7 @@ representative sample at U/t ≈ 6 (medium correlation).
 
 ```bash
 # Requires pretrained model (run train_ssl.py first)
-python train_decoder.py              # → results/decoder_eval.npz
+python src/train_decoder.py              # → results/decoder_eval.npz
 
 python paper/fig5_decoder/plot.py   # → paper/fig5_decoder/fig5.{png,pdf}
 ```

@@ -44,13 +44,13 @@ of half-filling.
 
 ```bash
 # 1. Generate multi-filling data (from repo root)
-python generate_data_filling.py       # → data/hubbard_filling_{ssl,gs}.npz
+python src/generate_data_filling.py       # → data/hubbard_filling_{ssl,gs}.npz
 
 # 2. Pretrain Q-JEPA on all fillings (h_dim=2)
-python train_ssl_filling.py           # → checkpoints/jepa_filling.pt
+python src/train_ssl_filling.py           # → checkpoints/jepa_filling.pt
 
 # 3. Run few-shot evaluation
-python eval_filling.py                # → results/filling_results{,_byfill}.npy
+python src/eval_filling.py                # → results/filling_results{,_byfill}.npy
 
 # 4. Generate this figure
 python paper/fig3_multi_filling/plot.py
