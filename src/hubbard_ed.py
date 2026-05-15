@@ -102,6 +102,18 @@ def compute_1rdm_fast(psi, ops, L):
 
 def build_hubbard(L, t, U, basis, basis_idx):
     """Build 1D Hubbard Hamiltonian with PBC."""
+    t_bonds = np.full(L, t)
+    eps = np.zeros(L)
+    return build_hubbard_general(L, t_bonds, eps, U, basis, basis_idx)
+
+
+def build_hubbard_general(L, t_bonds, eps, U, basis, basis_idx):
+    """
+    General 1D Hubbard Hamiltonian with PBC.
+    t_bonds: (L,) hopping for bond (i, i+1 mod L)
+    eps:     (L,) onsite energies
+    U:       scalar Hubbard interaction
+    """
     dim = len(basis)
     H = lil_matrix((dim, dim), dtype=np.float64)
 
@@ -109,14 +121,19 @@ def build_hubbard(L, t, U, basis, basis_idx):
         up_set = set(up)
         dn_set = set(dn)
 
-        # Diagonal: Hubbard U
+        # Diagonal: Hubbard U + onsite energies
         H[col_idx, col_idx] += U * len(up_set & dn_set)
+        for i in up_set:
+            H[col_idx, col_idx] += eps[i]
+        for i in dn_set:
+            H[col_idx, col_idx] += eps[i]
 
         # Hopping
         for sigma, occ in [(0, up), (1, dn)]:
             occ_set = set(occ)
             for i in range(L):
                 j = (i + 1) % L
+                t_ij = t_bonds[i]
                 for src, dst in [(i, j), (j, i)]:
                     if src in occ_set and dst not in occ_set:
                         sign_ann = _annihilate_sign(occ, src)
@@ -130,7 +147,7 @@ def build_hubbard(L, t, U, basis, basis_idx):
                             new_state = (up, new_occ)
                         row_idx = basis_idx.get(new_state)
                         if row_idx is not None:
-                            H[row_idx, col_idx] -= t * sign
+                            H[row_idx, col_idx] -= t_ij * sign
     return csr_matrix(H)
 
 
