@@ -25,6 +25,10 @@ FILLINGS = [
     (3, 3, 1.0),
 ]
 U_VALUES  = np.linspace(0.0, 12.0, 100)   # 100 U per filling → 300 total
+# Every 5th U value (indices 4,9,14,...,99) is held out as OOD test set.
+# These U values are NEVER seen during SSL pretraining — only used for evaluation.
+_TEST_SEL = np.zeros(100, dtype=bool)
+_TEST_SEL[4::5] = True   # 20 OOD test values, 80 SSL values
 N_INIT    = 10
 TAU_STEPS = 30
 DELTA_TAU = 0.3
@@ -43,6 +47,7 @@ gs_U       = []
 gs_filling = []
 gs_E0      = []
 gs_gamma   = []
+gs_is_test = []   # True = OOD test (never seen in SSL)
 
 for N_up, N_dn, filling_n in FILLINGS:
     print(f"\nFilling n={filling_n:.3f}  (N_up={N_up}, N_dn={N_dn})")
@@ -51,7 +56,7 @@ for N_up, N_dn, filling_n in FILLINGS:
     ops       = build_all_cdagger_c(L, basis, basis_idx)
     print(f"  Hilbert dim = {len(basis)}")
 
-    for U in tqdm(U_VALUES, desc=f"  U/t (n={filling_n:.2f})"):
+    for u_idx, U in enumerate(tqdm(U_VALUES, desc=f"  U/t (n={filling_n:.2f})")):
         H_mat = build_hubbard(L, t, U, basis, basis_idx)
 
         E0, psi_gs = ground_state(H_mat)
@@ -60,7 +65,11 @@ for N_up, N_dn, filling_n in FILLINGS:
         gs_filling.append(filling_n)
         gs_E0.append(E0)
         gs_gamma.append(gamma_gs)
+        gs_is_test.append(bool(_TEST_SEL[u_idx]))
 
+        # SSL trajectory data only for non-test U values
+        if _TEST_SEL[u_idx]:
+            continue
         for _ in range(N_INIT):
             psi0 = (random_fock_state(basis, rng) if rng.random() < 0.5
                     else random_superposition(basis, rng))
@@ -81,11 +90,15 @@ np.savez(ssl_path,
          gamma_gs = np.array(ssl_gamma_gs, dtype=np.float32),
          H        = np.array(ssl_H,        dtype=np.float32))
 np.savez(gs_path,
-         U       = np.array(gs_U,       dtype=np.float32),
-         filling = np.array(gs_filling, dtype=np.float32),
-         E0      = np.array(gs_E0,      dtype=np.float32),
-         gamma_gs= np.array(gs_gamma,   dtype=np.float32))
+         U        = np.array(gs_U,       dtype=np.float32),
+         filling  = np.array(gs_filling, dtype=np.float32),
+         E0       = np.array(gs_E0,      dtype=np.float32),
+         gamma_gs = np.array(gs_gamma,   dtype=np.float32),
+         is_test  = np.array(gs_is_test, dtype=bool))
 
+n_test = sum(gs_is_test)
 print(f"\nSaved {len(ssl_gamma_t)} SSL pairs  -> {ssl_path}")
 print(f"Saved {len(gs_U)} ground states -> {gs_path}")
+print(f"  SSL train: {len(gs_U)-n_test} samples | OOD test: {n_test} samples")
+print(f"  Test U values (first 5): {np.array(gs_U)[np.array(gs_is_test)][:5]}")
 print(f"1-RDM shape: {np.array(ssl_gamma_t).shape[1:]}")

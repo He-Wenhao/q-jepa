@@ -30,7 +30,6 @@ LR           = 1e-3
 BATCH_SIZE   = 32
 N_LABEL_LIST = [10, 20, 50, 100]
 N_SEEDS      = 5
-TEST_FRAC    = 0.2
 N_FOCK_AVG   = 5
 DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
 PRETRAIN_PATH= "checkpoints/jepa_filling.pt"
@@ -48,11 +47,13 @@ U_all      = d["U"].astype(np.float32)
 fill_all   = d["filling"].astype(np.float32)
 E0_all     = d["E0"].astype(np.float32)
 gamma_all  = d["gamma_gs"].astype(np.float32)
+is_test    = d["is_test"].astype(bool)
 H_all      = np.stack([U_all, fill_all], axis=-1).astype(np.float32)  # (N, 2)
 n_total    = len(U_all)
 rdm_dim    = gamma_all.shape[-1]
 print(f"Dataset: N={n_total}, rdm_dim={rdm_dim}, device={DEVICE}")
 print(f"Fillings: {np.unique(fill_all)}")
+print(f"OOD test: {is_test.sum()} samples | SSL pool: {(~is_test).sum()} samples")
 
 # Build ED structures per filling for random Fock states
 # Use rounded keys to avoid float32 vs float64 mismatch
@@ -71,17 +72,9 @@ model = QJEPA(rdm_dim=rdm_dim, latent_dim=LATENT_DIM, h_dim=H_DIM, hidden=HIDDEN
 model.load_state_dict(torch.load(PRETRAIN_PATH, map_location=DEVICE))
 model = model.to(DEVICE).eval()
 
-# Fixed 80/20 split (stratified by filling)
-rng_split = np.random.default_rng(0)
-test_idx  = []; pool_idx = []
-for fn in FILLING_VALS:
-    mask = np.where(np.abs(fill_all - fn) < 1e-4)[0]
-    rng_split.shuffle(mask)
-    n_te = int(len(mask) * TEST_FRAC)
-    test_idx.extend(mask[:n_te])
-    pool_idx.extend(mask[n_te:])
-test_idx = np.array(test_idx)
-pool_idx = np.array(pool_idx)
+# OOD split: test = U values never seen during SSL pretraining
+test_idx = np.where(is_test)[0]
+pool_idx = np.where(~is_test)[0]
 
 gamma_test = torch.tensor(gamma_all[test_idx], dtype=torch.float32, device=DEVICE)
 H_test     = torch.tensor(H_all[test_idx],     dtype=torch.float32, device=DEVICE)
