@@ -237,24 +237,13 @@ def panel_b(h_vecs, gamma_gs, test_idx, pool_idx, gamma_0_np,
 
 # ── Panel C: Convergence Curves ───────────────────────────────────────────────
 
-def panel_c(h_vecs, gamma_gs, test_idx, pool_idx, gamma_0_np,
+def panel_c(h_vecs, gamma_gs, gamma_traj, test_idx, pool_idx, gamma_0_np,
             rdm_dim, h_dim, h_mean, h_std, N_TRAIN=20, N_SEEDS=3):
-    print("Panel C: convergence curves...")
+    """Equal-budget convergence curves: both methods use the same N_TRAIN Hamiltonians."""
+    print("Panel C: convergence curves (equal budget)...")
     gamma_0 = torch.tensor(gamma_0_np, device=DEVICE)
     h_te    = torch.tensor(h_vecs[test_idx], device=DEVICE)
     g_te    = torch.tensor(gamma_gs[test_idx], device=DEVICE)
-
-    d_traj    = np.load(os.path.join(ROOT, "data", "exp1_combined.npz"))
-    gamma_traj = d_traj["gamma_traj"].astype(np.float32)
-    gc_list, gn_list, hv_list = [], [], []
-    for i in pool_idx:
-        for traj in gamma_traj[i]:
-            for t in range(len(traj) - 1):
-                gc_list.append(traj[t]); gn_list.append(traj[t+1])
-                hv_list.append(h_vecs[i])
-    gc = np.array(gc_list, dtype=np.float32)
-    gn = np.array(gn_list, dtype=np.float32)
-    hv_traj = np.array(hv_list, dtype=np.float32)
 
     EPOCHS = 500; LOG_EVERY = 5
     ep_curves, tr_curves = [], []
@@ -265,13 +254,25 @@ def panel_c(h_vecs, gamma_gs, test_idx, pool_idx, gamma_0_np,
         h_tr = torch.tensor(h_vecs[idx], device=DEVICE)
         g_tr = torch.tensor(gamma_gs[idx], device=DEVICE)
 
+        # Endpoint: fine-tune from random init
         ep_model = make_model(rdm_dim, h_dim, h_mean, h_std)
         _, ep_curve = finetune_with_log(ep_model, gamma_0, h_tr, g_tr,
                                          h_te, g_te, EPOCHS, LOG_EVERY)
         ep_curves.append(ep_curve[:, 1])
 
-        pt_model = pretrain_on_pool(gc, gn, hv_traj, rdm_dim, h_dim,
-                                     h_mean, h_std, epochs=100, seed=seed)
+        # Trajectory: pretrain on same N_TRAIN Hamiltonians' trajectories, then fine-tune
+        gc_list, gn_list, hv_list = [], [], []
+        for i in idx:
+            for traj in gamma_traj[i]:
+                for t in range(len(traj) - 1):
+                    gc_list.append(traj[t]); gn_list.append(traj[t+1])
+                    hv_list.append(h_vecs[i])
+        gc = np.array(gc_list, dtype=np.float32)
+        gn = np.array(gn_list, dtype=np.float32)
+        hv_traj_seed = np.array(hv_list, dtype=np.float32)
+
+        pt_model = pretrain_on_pool(gc, gn, hv_traj_seed, rdm_dim, h_dim,
+                                     h_mean, h_std, epochs=200, seed=seed)
         _, tr_curve = finetune_with_log(pt_model, gamma_0, h_tr, g_tr,
                                          h_te, g_te, EPOCHS, LOG_EVERY)
         tr_curves.append(tr_curve[:, 1])
@@ -311,11 +312,7 @@ def main():
     print(f"  pool={len(pool_idx)}  test={len(test_idx)}  "
           f"rdm_dim={rdm_dim}  h_dim={h_dim}")
 
-    panel_a(h_vecs, gamma_gs, gamma_traj, test_idx, pool_idx, gamma_0,
-            rdm_dim, h_dim, h_mean, h_std)
-    panel_b(h_vecs, gamma_gs, test_idx, pool_idx, gamma_0,
-            rdm_dim, h_dim, h_mean, h_std)
-    panel_c(h_vecs, gamma_gs, test_idx, pool_idx, gamma_0,
+    panel_c(h_vecs, gamma_gs, gamma_traj, test_idx, pool_idx, gamma_0,
             rdm_dim, h_dim, h_mean, h_std)
     print("\nAll done.")
 

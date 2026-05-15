@@ -174,6 +174,27 @@ def imaginary_time_evolve(H_sparse, psi0, tau_steps, delta_tau):
         yield (step + 1) * delta_tau, psi.copy()
 
 
+def power_iteration_evolve(H_sparse, psi0, n_steps, shift=20.0):
+    """
+    Generator: yields (step, psi_normalized) via shifted power iteration.
+    Applies (shift*I - H) repeatedly; converges to ground state of H
+    since ground state has largest eigenvalue of (shift*I - H).
+    shift must exceed the largest eigenvalue of H (use shift=20 for L=6 Hubbard).
+    """
+    from scipy.sparse import eye
+    A = shift * eye(H_sparse.shape[0], format="csr") - H_sparse
+    psi = psi0.astype(np.float64).copy()
+    psi /= np.linalg.norm(psi)
+    yield 0, psi.copy()
+    for step in range(n_steps):
+        psi = A @ psi
+        norm = np.linalg.norm(psi)
+        if norm < 1e-14:
+            break
+        psi /= norm
+        yield step + 1, psi.copy()
+
+
 def random_fock_state(basis, rng=None):
     if rng is None:
         rng = np.random.default_rng()
