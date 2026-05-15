@@ -6,3 +6,5 @@ data/
 results/
 *.egg-info/
 .DS_Store
+logs/
+logs/
