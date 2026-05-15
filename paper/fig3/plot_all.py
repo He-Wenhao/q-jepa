@@ -2,9 +2,9 @@
 Generate all paper figures from saved results.
 
 Figures:
-  fig1_main.{pdf,png}     — Exp 1: interpolation, MAE vs N_labels
-  fig2_extrap.{pdf,png}   — Exp 2: extrapolation (U∈[6,10] OOD)
-  fig3_scaling.{pdf,png}  — Exp 3: SSL data volume scaling
+  fig3a_indist.{pdf,png}     — Exp 1: interpolation, MAE vs N_labels
+  fig3b_extrap.{pdf,png}   — Exp 2: extrapolation (U∈[6,10] OOD)
+  fig3c_scaling.{pdf,png}  — Exp 3: SSL data volume scaling
   fig_combined.{pdf,png}  — 3-panel combined figure
 """
 import os
@@ -117,9 +117,9 @@ def fig_main():
     fig, ax = plt.subplots(figsize=(5, 4))
     draw_main_ax(ax, means, stds, "(a) In-distribution\n(train/test U∈[0,8])")
     for ext in ("pdf", "png"):
-        fig.savefig(os.path.join(OUT, f"fig1_main.{ext}"))
+        fig.savefig(os.path.join(OUT, f"fig3a_indist.{ext}"))
     plt.close(fig)
-    print("Saved fig1_main.{pdf,png}")
+    print("Saved fig3a_indist.{pdf,png}")
 
 
 def fig_extrap():
@@ -129,18 +129,18 @@ def fig_extrap():
                  "(b) Extrapolation\n(SSL/train U∈[0,6], test U∈[6,10])",
                  show_ylabel=False)
     for ext in ("pdf", "png"):
-        fig.savefig(os.path.join(OUT, f"fig2_extrap.{ext}"))
+        fig.savefig(os.path.join(OUT, f"fig3b_extrap.{ext}"))
     plt.close(fig)
-    print("Saved fig2_extrap.{pdf,png}")
+    print("Saved fig3b_extrap.{pdf,png}")
 
 
 def fig_scaling():
     fig, ax = plt.subplots(figsize=(5, 4))
     draw_scaling_ax(ax)
     for ext in ("pdf", "png"):
-        fig.savefig(os.path.join(OUT, f"fig3_scaling.{ext}"))
+        fig.savefig(os.path.join(OUT, f"fig3c_scaling.{ext}"))
     plt.close(fig)
-    print("Saved fig3_scaling.{pdf,png}")
+    print("Saved fig3c_scaling.{pdf,png}")
 
 
 def fig_combined():
