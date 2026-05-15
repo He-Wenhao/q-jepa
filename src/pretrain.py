@@ -34,8 +34,8 @@ CKPT_DIR    = os.path.join(ROOT, "checkpoints")
 os.makedirs(CKPT_DIR, exist_ok=True)
 
 
-def load_data(mode: str, rng: np.random.Generator):
-    d = np.load(TRAJ_PATH)
+def load_data(mode: str, rng: np.random.Generator, traj_path: str = TRAJ_PATH):
+    d = np.load(traj_path)
     gamma_curr = d["gamma_curr"].astype(np.float32)  # (N, rdm, rdm)
     gamma_next = d["gamma_next"].astype(np.float32)
     h_vec      = d["h_vec"].astype(np.float32)
@@ -59,16 +59,20 @@ def load_data(mode: str, rng: np.random.Generator):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["traj", "rand"], default="traj")
-    parser.add_argument("--epochs", type=int, default=EPOCHS)
-    parser.add_argument("--seed",   type=int, default=0)
+    parser.add_argument("--mode",      choices=["traj", "rand"], default="traj")
+    parser.add_argument("--epochs",    type=int, default=EPOCHS)
+    parser.add_argument("--seed",      type=int, default=0)
+    parser.add_argument("--traj_path", type=str, default=TRAJ_PATH)
+    parser.add_argument("--ckpt_name", type=str, default=None,
+                        help="Checkpoint filename stem (default: pretrain_{mode})")
     args = parser.parse_args()
 
     rng = np.random.default_rng(args.seed)
     torch.manual_seed(args.seed)
 
-    print(f"Pretraining mode: {args.mode}  device: {DEVICE}")
-    gamma_curr, gamma_next, h_vec = load_data(args.mode, rng)
+    ckpt_stem = args.ckpt_name or f"pretrain_{args.mode}"
+    print(f"Pretraining mode: {args.mode}  device: {DEVICE}  ckpt: {ckpt_stem}")
+    gamma_curr, gamma_next, h_vec = load_data(args.mode, rng, traj_path=args.traj_path)
     n, rdm_dim, _ = gamma_curr.shape
     h_dim = h_vec.shape[-1]
     print(f"  Pairs: {n:,}  rdm_dim: {rdm_dim}  h_dim: {h_dim}")
@@ -92,7 +96,7 @@ def main():
     sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
 
     best_loss = float("inf")
-    ckpt_path = os.path.join(CKPT_DIR, f"pretrain_{args.mode}.pt")
+    ckpt_path = os.path.join(CKPT_DIR, f"{ckpt_stem}.pt")
     _save = lambda: torch.save({"model": model.state_dict(),
                                 "h_mean": h_mean.tolist(), "h_std": h_std.tolist(),
                                 "rdm_dim": rdm_dim, "h_dim": h_dim,

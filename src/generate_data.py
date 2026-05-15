@@ -12,6 +12,7 @@ The 200 labeled Hamiltonians are held out from SSL entirely (OOD test).
 """
 import os
 import sys
+import argparse
 import numpy as np
 from tqdm import tqdm
 
@@ -47,10 +48,10 @@ U_MAX    = 8.0   # U       ~ U[0, U_MAX]
 H_DIM = L + L + 1  # t_bonds(L) + eps(L) + U(1) = 13
 
 
-def sample_hamiltonian(rng):
+def sample_hamiltonian(rng, u_max=U_MAX):
     t_bonds = T_MEAN + T_SPREAD * (rng.random(L) * 2 - 1)
     eps     = EPS_MAX * (rng.random(L) * 2 - 1)
-    U       = rng.random() * U_MAX
+    U       = rng.random() * u_max
     h_vec   = np.concatenate([t_bonds, eps, [U]]).astype(np.float32)
     return t_bonds, eps, U, h_vec
 
@@ -66,6 +67,11 @@ def canonical_gamma_0():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--extrap", action="store_true",
+                        help="Extrapolation regime: SSL on U∈[0,6], test on U∈[6,10]")
+    args = parser.parse_args()
+
     rng  = np.random.default_rng(SEED)
     N_total = N_HAM_SSL + N_HAM_LABELED
 
@@ -76,25 +82,39 @@ def main():
     ops       = build_all_cdagger_c(L, basis, basis_idx)
     print(f"  Hilbert space dim = {len(basis)}")
 
-    # Sample Hamiltonian parameters
-    print(f"Sampling {N_total} Hamiltonians...")
-    all_t_bonds = []
-    all_eps     = []
-    all_U       = []
-    all_h_vecs  = []
-    for _ in range(N_total):
-        t, e, u, hv = sample_hamiltonian(rng)
-        all_t_bonds.append(t)
-        all_eps.append(e)
-        all_U.append(u)
-        all_h_vecs.append(hv)
+    suffix  = "_extrap" if args.extrap else ""
+    u_ssl   = 6.0 if args.extrap else U_MAX
+    u_pool  = 6.0 if args.extrap else U_MAX
+    u_test  = None  # special case for extrap test below
 
-    # Shuffle and split
-    idx_perm      = rng.permutation(N_total)
-    ssl_idx       = idx_perm[:N_HAM_SSL]
-    labeled_idx   = idx_perm[N_HAM_SSL:]          # N_HAM_LABELED total
-    test_labeled  = labeled_idx[:N_TEST]           # fixed test set
-    pool_labeled  = labeled_idx[N_TEST:]           # fine-tuning pool
+    # Sample Hamiltonian parameters
+    print(f"Sampling Hamiltonians (extrap={args.extrap})...")
+    all_t_bonds, all_eps, all_U, all_h_vecs = [], [], [], []
+    # SSL + pool: U up to u_ssl
+    for _ in range(N_HAM_SSL + (N_HAM_LABELED - N_TEST)):
+        t, e, u, hv = sample_hamiltonian(rng, u_max=u_ssl)
+        all_t_bonds.append(t); all_eps.append(e); all_U.append(u); all_h_vecs.append(hv)
+    # Test set: U ∈ [6, 10] if extrap, else U up to U_MAX
+    for _ in range(N_TEST):
+        if args.extrap:
+            t_bonds = T_MEAN + T_SPREAD * (rng.random(L) * 2 - 1)
+            eps     = EPS_MAX * (rng.random(L) * 2 - 1)
+            U_val   = 6.0 + rng.random() * 4.0   # U ∈ [6, 10]
+            h_vec   = np.concatenate([t_bonds, eps, [U_val]]).astype(np.float32)
+        else:
+            t_bonds, eps, U_val, h_vec = sample_hamiltonian(rng)
+        all_t_bonds.append(t_bonds); all_eps.append(eps)
+        all_U.append(U_val); all_h_vecs.append(h_vec)
+
+    N_total_actual = len(all_t_bonds)
+    # Assign indices
+    pool_end  = N_HAM_SSL + (N_HAM_LABELED - N_TEST)
+    ssl_idx   = list(range(N_HAM_SSL))
+    pool_idx_list = list(range(N_HAM_SSL, pool_end))
+    test_idx_list = list(range(pool_end, N_total_actual))
+    labeled_idx   = pool_idx_list + test_idx_list
+    test_labeled  = test_idx_list
+    pool_labeled  = pool_idx_list
 
     # ── Generate labeled GS data ───────────────────────────────────────────────
     print(f"\nGenerating {N_HAM_LABELED} labeled ground states...")
@@ -113,7 +133,7 @@ def main():
         lbl_E0.append(float(E0))
         lbl_is_test.append(i in set(test_labeled))
 
-    labeled_path = os.path.join(DATA_DIR, "labeled_gs.npz")
+    labeled_path = os.path.join(DATA_DIR, f"labeled_gs{suffix}.npz")
     np.savez(labeled_path,
              h_vec    = np.array(lbl_h_vecs),
              gamma_gs = np.array(lbl_gamma),
@@ -146,7 +166,7 @@ def main():
                 hv_list.append(all_h_vecs[i])
                 hid_list.append(k)  # Hamiltonian index (0..N_HAM_SSL-1)
 
-    traj_path = os.path.join(DATA_DIR, "trajectories.npz")
+    traj_path = os.path.join(DATA_DIR, f"trajectories{suffix}.npz")
     np.savez(traj_path,
              gamma_curr = np.array(gc_list),
              gamma_next = np.array(gn_list),

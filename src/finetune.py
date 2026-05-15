@@ -41,10 +41,13 @@ RESULTS_DIR  = os.path.join(ROOT, "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 
-def load_pretrained(mode: str, device: str) -> DeltaPredictor | None:
+def load_pretrained(mode: str, device: str,
+                    traj_ckpt: str = "pretrain_traj",
+                    rand_ckpt: str = "pretrain_rand") -> DeltaPredictor | None:
     if mode == "no_pretrain":
         return None
-    path = os.path.join(CKPT_DIR, f"pretrain_{mode.replace('_pretrain', '')}.pt")
+    stem = traj_ckpt if "traj" in mode else rand_ckpt
+    path = os.path.join(CKPT_DIR, f"{stem}.pt")
     ckpt = torch.load(path, map_location=device, weights_only=False)
     model = DeltaPredictor(rdm_dim=ckpt["rdm_dim"], h_dim=ckpt["h_dim"],
                            hidden=HIDDEN, n_layers=N_LAYERS)
@@ -95,11 +98,17 @@ def evaluate(model: DeltaPredictor, gamma_0: torch.Tensor,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seeds", type=int, default=N_SEEDS)
+    parser.add_argument("--seeds",        type=int, default=N_SEEDS)
+    parser.add_argument("--labeled_path", type=str, default=LABELED_PATH)
+    parser.add_argument("--traj_ckpt",    type=str, default="pretrain_traj",
+                        help="Stem of traj checkpoint (no .pt)")
+    parser.add_argument("--rand_ckpt",    type=str, default="pretrain_rand",
+                        help="Stem of rand checkpoint (no .pt)")
+    parser.add_argument("--out_name",     type=str, default="finetune_results")
     args = parser.parse_args()
 
     print(f"Fine-tuning evaluation  device: {DEVICE}")
-    d = np.load(LABELED_PATH)
+    d = np.load(args.labeled_path)
     h_vec_all   = d["h_vec"].astype(np.float32)
     gamma_gs_all = d["gamma_gs"].astype(np.float32)
     is_test      = d["is_test"].astype(bool)
@@ -108,7 +117,7 @@ def main():
     h_dim        = h_vec_all.shape[-1]
 
     # H stats from pretraining data (load from traj pretrain checkpoint)
-    traj_ckpt = torch.load(os.path.join(CKPT_DIR, "pretrain_traj.pt"), map_location=DEVICE, weights_only=False)
+    traj_ckpt = torch.load(os.path.join(CKPT_DIR, f"{args.traj_ckpt}.pt"), map_location=DEVICE, weights_only=False)
     h_mean = traj_ckpt["h_mean"]
     h_std  = traj_ckpt["h_std"]
 
@@ -130,7 +139,7 @@ def main():
     # Pre-load pretrained models (once each)
     pretrained = {}
     for m in methods:
-        pt = load_pretrained(m, DEVICE)
+        pt = load_pretrained(m, DEVICE, traj_ckpt=args.traj_ckpt, rand_ckpt=args.rand_ckpt)
         if pt is None:
             pt = make_fresh_model(rdm_dim, h_dim, h_mean, h_std, DEVICE)
         pretrained[m] = pt
@@ -152,7 +161,7 @@ def main():
             vals = results[m][n_labels]
             print(f"  {m:20s}: {np.mean(vals):.4f} ± {np.std(vals):.4f}")
 
-    out_path = os.path.join(RESULTS_DIR, "finetune_results.npy")
+    out_path = os.path.join(RESULTS_DIR, f"{args.out_name}.npy")
     np.save(out_path, results)
     print(f"\nSaved -> {out_path}")
 
