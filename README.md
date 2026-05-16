@@ -143,3 +143,89 @@ checkpoints/
   pretrain_traj_extrap.pt  — Exp 2b extrap version
   pretrain_rand_extrap.pt  — Exp 2b extrap version
 ```
+
+---
+
+## Data & Reproducibility
+
+### What's on GitHub vs Google Drive
+
+Large binary files (`data/`, `results/`, `checkpoints/`, `logs/`) are excluded from git
+and stored on Google Drive at:
+
+```
+gdrive:research/q-jepa/
+  data/          — all .npz datasets (~120 MB)
+  results/       — all .npy result arrays
+  checkpoints/   — pretrained model weights (.pt)
+  logs/          — training logs
+```
+
+### Download data from Google Drive (rclone)
+
+**One-time setup**: install and authenticate rclone with Google Drive.
+```bash
+# Install rclone
+curl https://rclone.org/install.sh | sudo bash   # or: conda install -c conda-forge rclone
+
+# Authenticate (opens browser)
+rclone config
+# -> choose "n" (new remote), name it "gdrive", type "drive", follow OAuth prompts
+```
+
+**Download all data to your local clone**:
+```bash
+# From the project root
+rclone copy gdrive:research/q-jepa/data/        data/        --progress
+rclone copy gdrive:research/q-jepa/results/     results/     --progress
+rclone copy gdrive:research/q-jepa/checkpoints/ checkpoints/ --progress
+```
+
+Or download everything at once:
+```bash
+rclone copy gdrive:research/q-jepa/ . \
+  --include "data/**" --include "results/**" --include "checkpoints/**" \
+  --progress
+```
+
+### Quick start (after data download)
+
+```bash
+# Reproduce main result (Fig 2) — ~20 min on GPU
+python src/exp1.py
+
+# Reproduce OOD result (Fig 4) — ~40 min on GPU
+python src/exp_ood.py
+
+# Reproduce mechanism analysis (Fig 5) — ~60 min on GPU
+python src/exp5.py
+
+# Plot all figures
+python paper/fig1/plot_fig1.py
+python paper/fig2/plot_exp1.py
+python paper/fig4_ood/plot_fig4_ood.py
+python paper/fig5/plot_fig5.py
+```
+
+### Regenerate data from scratch
+
+```bash
+# Main dataset (Exp 1 + Exp 2) — ~5 min
+python src/generate_data_exp1.py
+
+# OOD dataset — ~30 s
+python src/generate_data_ood.py
+
+# Fig 5 power-iteration dataset — ~2 min
+python src/generate_data_fig5.py
+```
+
+### Paper
+
+The manuscript draft is at `paper/manuscript/main.tex` (compiled PDF: `paper/manuscript/main.pdf`).
+Compile with:
+```bash
+# Using tectonic (downloads only needed packages, no full texlive install)
+curl -fsSL https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-musl.tar.gz | tar -xz -C /tmp
+/tmp/tectonic paper/manuscript/main.tex
+```
