@@ -1,18 +1,16 @@
 """
-Figure 1: Schematic overview of trajectory SSL for quantum many-body systems.
+Figure 1: Core idea — standard workflow vs trajectory SSL.
 
-Panel (a): 1D Hubbard model + 1-RDM definition
-Panel (b): Imaginary-time trajectory converging to ground state
-Panel (c): Two-stage SSL pipeline (pretrain → fine-tune)
+Left panel:  standard approach discards intermediate solver states
+Right panel: trajectory SSL uses all intermediate states as free training data
 """
 import os
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.gridspec as gridspec
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib.lines import Line2D
 
 matplotlib.rcParams.update({
     "font.family": "serif", "font.size": 11,
@@ -22,183 +20,218 @@ matplotlib.rcParams.update({
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 
-# Load real data for panels (b) and (c)
-ROOT      = os.path.join(os.path.dirname(__file__), "..", "..")
-DATA_PATH = os.path.join(ROOT, "data", "exp1_combined.npz")
-
-COL_TR = "#2166AC"
-COL_EP = "#888888"
-COL_GS = "#B2182B"
-
-
-# ── Panel (a): 1D Hubbard lattice + γ heatmap ────────────────────────────────
-
-def panel_a(ax):
-    ax.set_xlim(-0.5, 9.5); ax.set_ylim(-1.5, 2.5); ax.axis("off")
-    L = 6
-
-    # Draw lattice bonds
-    xs = np.arange(L) * 1.4
-    for i in range(L):
-        j = (i + 1) % L
-        x1, x2 = xs[i], xs[j] if j > 0 else xs[0] + L * 1.4
-        if j > i:
-            ax.plot([x1, x2], [1.0, 1.0], "k-", lw=1.5, zorder=1)
-        else:  # PBC arc
-            ax.annotate("", xy=(xs[0], 0.7), xytext=(xs[L-1], 0.7),
-                        arrowprops=dict(arrowstyle="-", color="gray",
-                                        connectionstyle="arc3,rad=0.4",
-                                        lw=1.2, linestyle="dashed"))
-
-    # Draw sites
-    colors_up = ["#4575b4"] * L
-    for i, x in enumerate(xs):
-        c = plt.Circle((x, 1.0), 0.28, color="#DDDDDD", ec="k", lw=1.2, zorder=2)
-        ax.add_patch(c)
-        # spin up arrow
-        ax.annotate("", xy=(x, 1.38), xytext=(x, 1.10),
-                    arrowprops=dict(arrowstyle="-|>", color="#2166AC", lw=1.0))
-        # spin down arrow (some sites)
-        if i % 2 == 0:
-            ax.annotate("", xy=(x, 0.62), xytext=(x, 0.90),
-                        arrowprops=dict(arrowstyle="-|>", color="#D73027", lw=1.0))
-
-    # Labels
-    ax.text(xs[2], 1.85, r"$t_{ij}$", ha="center", fontsize=10, color="#333333")
-    ax.annotate("", xy=(xs[2]+0.35, 1.0), xytext=(xs[1]+0.35, 1.0),
-                arrowprops=dict(arrowstyle="-|>", color="#555555", lw=0.8))
-    ax.text(xs[1] - 0.1, 0.55, r"$U$", ha="center", fontsize=10, color="#8B0000")
-    ax.text(-0.3, -0.7,
-            r"$\gamma_{ij} = \langle c^\dagger_i c^{\ }_j \rangle$",
-            fontsize=10.5)
-    ax.set_title(r"(a) Model: 1D Hubbard + 1-RDM $\gamma$", pad=6)
+# ── colors ────────────────────────────────────────────────────────────────────
+C_SOLVER  = "#4A4A8A"   # dark blue-purple for solver box
+C_TRAJ    = "#2166AC"   # blue for active trajectory states
+C_GS      = "#B2182B"   # red for ground state
+C_DISCARD = "#CCCCCC"   # gray for discarded states
+C_SSL     = "#4575B4"   # blue for SSL stage
+C_FT      = "#1B7837"   # green for fine-tune
+C_EP      = "#777777"   # gray for endpoint-only
 
 
-# ── Panel (b): imaginary-time trajectory ────────────────────────────────────
-
-def panel_b(ax):
-    try:
-        d = np.load(DATA_PATH)
-        gamma_traj = d["gamma_traj"].astype(np.float32)   # (M, 1, T+1, 12, 12)
-        gamma_gs   = d["gamma_gs"].astype(np.float32)
-        # Pick a representative Hamiltonian (pool, not test)
-        is_test = d["is_test"].astype(bool)
-        pool_idx = np.where(~is_test)[0]
-        idx = pool_idx[42]
-        traj = gamma_traj[idx, 0]   # (T+1, 12, 12)
-        gs   = gamma_gs[idx]
-        T    = len(traj)
-        tau  = np.arange(T) * 0.1
-        mae  = np.array([np.abs(traj[t] - gs).mean() for t in range(T)])
-    except Exception:
-        # Fallback: synthetic curve
-        tau = np.linspace(0, 3, 31)
-        mae = 0.25 * np.exp(-1.2 * tau) + 0.02
-
-    ax.plot(tau, mae, color=COL_TR, lw=2.0)
-    ax.axhline(mae[-1], color=COL_GS, lw=1.2, linestyle="--", alpha=0.7,
-               label=r"$\gamma_\mathrm{GS}$")
-
-    # Annotate γ_0 and γ_GS
-    ax.annotate(r"$\gamma_0$", xy=(tau[0], mae[0]),
-                xytext=(tau[0]+0.15, mae[0]+0.02),
-                fontsize=9.5, color=COL_TR,
-                arrowprops=dict(arrowstyle="->", color=COL_TR, lw=0.8))
-    ax.annotate(r"$\gamma_\mathrm{GS}$", xy=(tau[-1], mae[-1]),
-                xytext=(tau[-1]-0.8, mae[-1]+0.03),
-                fontsize=9.5, color=COL_GS,
-                arrowprops=dict(arrowstyle="->", color=COL_GS, lw=0.8))
-
-    # Mark a few intermediate steps
-    for t in [5, 15]:
-        ax.plot(tau[t], mae[t], "o", color=COL_TR, ms=6, zorder=5)
-        ax.text(tau[t]+0.05, mae[t]+0.015,
-                rf"$\gamma_{{{t}\delta\tau}}$", fontsize=8, color="#555555")
-
-    ax.set_xlabel(r"Imaginary time $\tau$")
-    ax.set_ylabel(r"MAE$(\gamma_\tau, \gamma_\mathrm{GS})$")
-    ax.set_title(r"(b) Imaginary-time trajectory $\gamma_\tau \to \gamma_\mathrm{GS}$", pad=6)
-    ax.set_ylim(bottom=0)
-    ax.grid(True, alpha=0.25, linewidth=0.5)
+def rounded_box(ax, x, y, w, h, color, text, subtext="", text_color="white",
+                fontsize=9.5, alpha=1.0, lw=1.5):
+    rect = FancyBboxPatch((x, y), w, h,
+                          boxstyle="round,pad=0.07",
+                          facecolor=color, edgecolor="white",
+                          linewidth=lw, zorder=3, alpha=alpha)
+    ax.add_patch(rect)
+    ty = y + h / 2 + (0.12 if subtext else 0)
+    ax.text(x + w / 2, ty, text, ha="center", va="center",
+            fontsize=fontsize, fontweight="bold",
+            color=text_color, zorder=4)
+    if subtext:
+        ax.text(x + w / 2, y + h / 2 - 0.18, subtext,
+                ha="center", va="center", fontsize=fontsize - 1.5,
+                color=text_color, alpha=0.9, zorder=4)
 
 
-# ── Panel (c): SSL pipeline ──────────────────────────────────────────────────
-
-def panel_c(ax):
-    ax.set_xlim(0, 10); ax.set_ylim(0, 4); ax.axis("off")
-
-    def box(x, y, w, h, color, label, sublabel=""):
-        rect = FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.08",
-                               facecolor=color, edgecolor="white",
-                               linewidth=1.5, zorder=3)
-        ax.add_patch(rect)
-        ax.text(x + w/2, y + h/2 + (0.13 if sublabel else 0),
-                label, ha="center", va="center", fontsize=9.5,
-                fontweight="bold", color="white", zorder=4)
-        if sublabel:
-            ax.text(x + w/2, y + h/2 - 0.22, sublabel,
-                    ha="center", va="center", fontsize=8,
-                    color="white", alpha=0.9, zorder=4)
-
-    def arrow(x1, x2, y, label="", color="#555555"):
-        ax.annotate("", xy=(x2, y), xytext=(x1, y),
-                    arrowprops=dict(arrowstyle="-|>", color=color, lw=1.4),
-                    zorder=5)
-        if label:
-            ax.text((x1+x2)/2, y+0.2, label, ha="center",
-                    fontsize=8, color=color)
-
-    # Stage 1: Pretraining
-    ax.text(2.1, 3.65, "Stage 1 — Self-supervised pretraining",
-            ha="center", fontsize=9, color="#444444", style="italic")
-    box(0.1, 2.6, 1.9, 0.85, "#4575B4",
-        r"Trajectory data", r"$(\gamma_t, \gamma_{t+1}, H)$")
-    arrow(2.0, 2.7, 3.025, color="#4575B4")
-    box(2.7, 2.6, 1.9, 0.85, "#4575B4",
-        r"Pretrain $f_\theta$", r"$f(\gamma_t,H)\!\to\!\gamma_{t+1}$")
-    arrow(4.6, 5.3, 3.025, label="init", color="#4575B4")
-
-    # Stage 2: Fine-tuning
-    ax.text(7.3, 3.65, "Stage 2 — Fine-tuning",
-            ha="center", fontsize=9, color="#444444", style="italic")
-    box(5.3, 2.6, 1.9, 0.85, "#1B7837",
-        r"$N$ labeled pairs", r"$(H,\, \gamma_\mathrm{GS})$")
-    arrow(7.2, 7.9, 3.025, color="#1B7837")
-    box(7.9, 2.6, 1.9, 0.85, "#1B7837",
-        r"Fine-tune $f_\theta$", r"$f(\gamma_0,H)\!\to\!\gamma_\mathrm{GS}$")
-
-    # Baseline arrow (endpoint only)
-    ax.text(4.75, 1.9, "Endpoint-only (baseline):",
-            ha="center", fontsize=8.5, color=COL_EP, style="italic")
-    box(5.3, 0.9, 1.9, 0.85, "#888888",
-        r"$N$ labeled pairs", r"$(H,\, \gamma_\mathrm{GS})$")
-    arrow(7.2, 7.9, 1.325, color="#888888")
-    box(7.9, 0.9, 1.9, 0.85, "#888888",
-        r"Train from scratch", r"$f(\gamma_0,H)\!\to\!\gamma_\mathrm{GS}$")
-
-    # Brace / bracket indicating "same N simulations"
-    ax.annotate("", xy=(5.25, 0.85), xytext=(5.25, 2.55),
-                arrowprops=dict(arrowstyle="-[", color="#555555",
-                                lw=1.0, mutation_scale=8))
-    ax.text(4.95, 1.7, "same\n$N$ sims", ha="center", fontsize=7.5, color="#555555")
-
-    ax.set_title("(c) Two-stage SSL pipeline", pad=6)
+def down_arrow(ax, x, y_top, y_bot, color="#555555", lw=1.4, label="", ls="-"):
+    ax.annotate("", xy=(x, y_bot), xytext=(x, y_top),
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=lw,
+                                linestyle=ls),
+                zorder=5)
+    if label:
+        ax.text(x + 0.1, (y_top + y_bot) / 2, label,
+                fontsize=8, color=color, va="center")
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+def right_arrow(ax, x_left, x_right, y, color="#555555", lw=1.4):
+    ax.annotate("", xy=(x_right, y), xytext=(x_left, y),
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=lw),
+                zorder=5)
 
+
+# ── draw a trajectory row ─────────────────────────────────────────────────────
+def draw_trajectory(ax, x0, y, n_frames=6, active_mask=None, radius=0.22):
+    """Draw γ₀ → γ₁ → … → γ_GS circles with arrows."""
+    if active_mask is None:
+        active_mask = [True] * n_frames
+    spacing = 0.85
+    xs = [x0 + i * spacing for i in range(n_frames)]
+
+    for i, (cx, active) in enumerate(zip(xs, active_mask)):
+        color = C_TRAJ if (active and i < n_frames - 1) else (C_GS if i == n_frames - 1 else C_DISCARD)
+        ec = color if active else C_DISCARD
+        circle = plt.Circle((cx, y), radius,
+                             facecolor=color if active else "#EEEEEE",
+                             edgecolor=ec, linewidth=1.4, zorder=3, alpha=1.0)
+        ax.add_patch(circle)
+        # label
+        if i == 0:
+            lbl = r"$\gamma_0$"
+        elif i == n_frames - 1:
+            lbl = r"$\gamma_\mathrm{GS}$"
+        else:
+            lbl = rf"$\gamma_{i}$"
+        ax.text(cx, y, lbl, ha="center", va="center",
+                fontsize=7.5 if i < n_frames - 1 else 8,
+                color="white" if active else "#AAAAAA",
+                fontweight="bold", zorder=4)
+        # ✗ cross for inactive
+        if not active and i < n_frames - 1:
+            ax.text(cx, y + radius + 0.08, r"$\times$", ha="center", va="bottom",
+                    fontsize=10, color="#CC4444", zorder=5)
+        # arrows between circles
+        if i < n_frames - 1:
+            ax.annotate("", xy=(xs[i + 1] - radius, y),
+                        xytext=(cx + radius, y),
+                        arrowprops=dict(arrowstyle="-|>",
+                                        color=C_TRAJ if active_mask[i + 1] else C_DISCARD,
+                                        lw=1.2),
+                        zorder=4)
+    return xs  # return x positions for wiring
+
+
+# ── Main figure ───────────────────────────────────────────────────────────────
 def main():
-    fig = plt.figure(figsize=(14, 3.8))
-    gs  = gridspec.GridSpec(1, 3, figure=fig, wspace=0.38,
-                             width_ratios=[1.1, 1.0, 1.4])
-    ax1 = fig.add_subplot(gs[0])
-    ax2 = fig.add_subplot(gs[1])
-    ax3 = fig.add_subplot(gs[2])
+    fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(14, 5.8))
 
-    panel_a(ax1)
-    panel_b(ax2)
-    panel_c(ax3)
+    for ax in (ax_l, ax_r):
+        ax.set_xlim(0, 6.2)
+        ax.set_ylim(-0.2, 5.8)
+        ax.axis("off")
 
+    N_FRAMES  = 6   # γ₀ γ₁ γ₂ γ₃ γ₄ γ_GS
+
+    # ── LEFT PANEL: standard approach ─────────────────────────────────────────
+    ax_l.set_title("(a)  Standard approach", fontsize=13,
+                   fontweight="bold", pad=8, color="#222222")
+
+    # Solver box
+    rounded_box(ax_l, 1.35, 4.5, 3.1, 0.75, C_SOLVER,
+                "Quantum solver", r"(e.g. imaginary-time, DMRG, QMC)",
+                fontsize=9)
+    ax_l.text(3.0, 5.42, f"Run on  N  Hamiltonians",
+              ha="center", fontsize=9, color="#444444", style="italic")
+    down_arrow(ax_l, 3.0, 4.5, 3.95, color=C_SOLVER)
+
+    # Trajectory label
+    ax_l.text(0.08, 3.72, "Solver output:", fontsize=8.5,
+              color="#444444", va="center")
+
+    # Draw trajectory — only γ_GS active, rest discarded
+    active = [False, False, False, False, False, True]
+    xs_l = draw_trajectory(ax_l, 0.25, 3.55, n_frames=N_FRAMES, active_mask=active)
+
+    # "discarded" label over the crossed states
+    ax_l.text(xs_l[2], 3.55 - 0.45,
+              "intermediate states  ——  discarded",
+              ha="center", fontsize=8, color="#AA5555",
+              style="italic")
+
+    # Only γ_GS arrow down
+    down_arrow(ax_l, xs_l[-1], 3.55 - 0.22, 2.65, color=C_GS)
+    ax_l.text(xs_l[-1] + 0.12, 3.1, r"$N$ labels", fontsize=8, color=C_GS)
+
+    # Train box
+    rounded_box(ax_l, 1.4, 1.7, 3.0, 0.80, C_EP,
+                "Supervised training from scratch",
+                r"$f(\gamma_0, H) \to \gamma_\mathrm{GS}$",
+                fontsize=9)
+
+    # Down to result
+    down_arrow(ax_l, 3.0, 1.7, 1.05, color=C_EP)
+    rounded_box(ax_l, 1.4, 0.3, 3.0, 0.65, C_EP,
+                "Trained predictor",
+                r"MAE on test set — baseline",
+                fontsize=9, alpha=0.75)
+
+    # Budget annotation
+    ax_l.text(3.0, -0.05, r"Cost: $N$ simulations", ha="center",
+              fontsize=9.5, color="#333333",
+              bbox=dict(boxstyle="round,pad=0.3", fc="#F5F5F5", ec="#BBBBBB", lw=1))
+
+    # ── RIGHT PANEL: trajectory SSL ───────────────────────────────────────────
+    ax_r.set_title("(b)  Trajectory SSL  (ours)", fontsize=13,
+                   fontweight="bold", pad=8, color="#1B4F8A")
+
+    # Solver box (identical)
+    rounded_box(ax_r, 1.35, 4.5, 3.1, 0.75, C_SOLVER,
+                "Quantum solver", r"(e.g. imaginary-time, DMRG, QMC)",
+                fontsize=9)
+    ax_r.text(3.0, 5.42, f"Run on  N  Hamiltonians  (same cost)",
+              ha="center", fontsize=9, color="#444444", style="italic")
+    down_arrow(ax_r, 3.0, 4.5, 3.95, color=C_SOLVER)
+
+    ax_r.text(0.08, 3.72, "Solver output:", fontsize=8.5,
+              color="#444444", va="center")
+
+    # Draw trajectory — ALL states active
+    active_all = [True] * N_FRAMES
+    xs_r = draw_trajectory(ax_r, 0.25, 3.55, n_frames=N_FRAMES, active_mask=active_all)
+
+    # "free!" label
+    ax_r.text(xs_r[2], 3.55 - 0.45,
+              "intermediate states  ——  free self-supervised signal!",
+              ha="center", fontsize=8, color="#1B7837", style="italic",
+              fontweight="bold")
+
+    # All intermediate states arrow to Stage 1
+    mid_x = (xs_r[0] + xs_r[-2]) / 2
+    ax_r.annotate("", xy=(1.85, 2.72), xytext=(mid_x, 3.55 - 0.22),
+                  arrowprops=dict(arrowstyle="-|>", color=C_SSL, lw=1.3,
+                                  connectionstyle="arc3,rad=0.15"),
+                  zorder=4)
+    ax_r.text(0.62, 3.05, r"$NT$ pairs", fontsize=8, color=C_SSL)
+
+    # γ_GS arrow to Stage 2
+    ax_r.annotate("", xy=(4.2, 2.72), xytext=(xs_r[-1], 3.55 - 0.22),
+                  arrowprops=dict(arrowstyle="-|>", color=C_GS, lw=1.3,
+                                  connectionstyle="arc3,rad=-0.15"),
+                  zorder=4)
+    ax_r.text(xs_r[-1] + 0.08, 3.05, r"$N$ labels", fontsize=8, color=C_GS)
+
+    # Stage 1 box
+    rounded_box(ax_r, 0.25, 1.85, 2.75, 0.75, C_SSL,
+                "Stage 1 — SSL pretrain",
+                r"$f(\gamma_t, H) \to \gamma_{t+1}$  (no labels)",
+                fontsize=8.5)
+
+    # Stage 2 box
+    rounded_box(ax_r, 3.2, 1.85, 2.75, 0.75, C_FT,
+                "Stage 2 — Fine-tune",
+                r"$f(\gamma_0, H) \to \gamma_\mathrm{GS}$",
+                fontsize=8.5)
+
+    # Arrow stage1 → stage2 (init weights)
+    right_arrow(ax_r, 3.0, 3.2, 2.225, color=C_SSL)
+    ax_r.text(3.1, 2.34, "init", fontsize=7.5, color=C_SSL, ha="center")
+
+    # Down to result
+    down_arrow(ax_r, 4.575, 1.85, 1.05, color=C_FT)
+    rounded_box(ax_r, 1.4, 0.3, 3.0, 0.65, C_FT,
+                "Trained predictor",
+                r"MAE on test set — $\mathbf{\sim\!1.7\times}$ lower error",
+                fontsize=9, alpha=0.9)
+
+    # Budget annotation
+    ax_r.text(3.0, -0.05, r"Cost: $N$ simulations  (identical!)",
+              ha="center", fontsize=9.5, color="#1B4F8A",
+              bbox=dict(boxstyle="round,pad=0.3", fc="#EEF4FF", ec="#4575B4", lw=1.2))
+
+    plt.tight_layout(pad=0.5)
     for ext in ("pdf", "png"):
         path = os.path.join(OUT, f"fig1_schematic.{ext}")
         fig.savefig(path)
